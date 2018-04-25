@@ -1,0 +1,13 @@
+Package: motley
+Type: Package
+Title: Motley R-functions
+Version: 0.1.0.0000
+Author: Caspar J. van Lissa
+Maintainer: Caspar J. van Lissa <c.j.vanlissa@uu.nl>
+Description: Motley is a nice archaic synonym for miscellaneous. The functions
+    in this package streamline some of the repetitive tasks I conduct in
+    preparing manuscripts. Sharing this package online ensures that my other
+    R-syntaxes remain fully reproducible.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
