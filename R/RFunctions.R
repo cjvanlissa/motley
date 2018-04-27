@@ -669,11 +669,9 @@ plotlist<-lapply(names(scales.list), function(x){
 #
 #Reliability analyses
 #
-doReliability<-function(data, keys.list, name, missing=TRUE, impute="none", omega=FALSE, omega.factors=NULL, write_files = FALSE){
+doReliability <- function(data, keys.list, name, missing=TRUE, impute="none", omega=FALSE, omega.factors=NULL, write_files = FALSE, digits = 2){
   require(psych)
   require(pastecs)
-
-
   scoredatanames<-as.vector(gsub("-", "", unlist(keys.list)))
   scoredatanames<-unique(scoredatanames)
 
@@ -712,21 +710,22 @@ doReliability<-function(data, keys.list, name, missing=TRUE, impute="none", omeg
     return(interpretation)
   }
 
-
-  table_descriptives<-data.frame(Subscale=colnames(scores$scores), Items=unlist(lapply(keys.list, length)) , round(describe(scores$scores)[,c(2,3,4,8,9)], 2), t(round(stat.desc(scores$scores, basic = FALSE, norm = TRUE),2)[c(8,9,10,11),]), Alpha=round(as.vector(scores$alpha), 2), Interpret.a=interpret(round(as.vector(scores$alpha), 2)))
-
+  table_descriptives<-data.frame(Subscale=colnames(scores$scores), Items=unlist(lapply(keys.list, length)) , as.matrix(describe(scores$scores))[,c(2,3,4,8,9)], t(stat.desc(scores$scores, basic = FALSE, norm = TRUE)[c(8,9,10,11),]), Alpha=as.vector(scores$alpha), Interpret.a=interpret(as.vector(scores$alpha)))
+  table_descriptives[, sapply(table_descriptives, is.numeric)] <- lapply(table_descriptives[, sapply(table_descriptives, is.numeric)], formatC, digits = digits, format = "f")
   if(omega){
-    table_descriptives<-data.frame(table_descriptives, Omega=round(omegas, 2), Interpret.O=interpret(round(omegas, 2)))
+    table_descriptives<-data.frame(table_descriptives, Omega=omegas, Interpret.O=interpret(omegas))
   }
 
   if(write_files) write.csv(table_descriptives, paste0(name, " scale table.csv"), row.names = F)
 
-  cortab<-as.data.frame(round(cor(scores$scores, use=ifelse(missing==TRUE, "pairwise.complete.obs", "complete.obs")), 2))
+  cortab<-cor(scores$scores, use=ifelse(missing==TRUE, "pairwise.complete.obs", "complete.obs"))
+  cortab <- formatC(cortab, digits = digits, format = "f")
   cortab[upper.tri(cortab)]<-""
 
   if(write_files) write.csv(cortab, paste0(name, " correlation table.csv"))
   return(list("table_descriptives"=table_descriptives, "Correlations"=cortab, "scores"=scores$scores))
 }
+
 
 itemDesc<-function(data, scales.list=NULL, write_files = FALSE){
   require(psych)
