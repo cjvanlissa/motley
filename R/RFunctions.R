@@ -1,3 +1,14 @@
+#' Herbert demo
+#'
+#' Een demo voor herbert
+#' @param teskt Character string with text
+#' @author Caspar J. van Lissa
+#' @export
+herbert <- function(tekst) {
+  print(tekst)
+}
+
+
 #' Run if file does (not) exist, else load file
 #'
 #' Check if a file exists, and if it doesn't, run an expression, and save the
@@ -128,7 +139,7 @@ merge.with.order <- function(...){
   stop("merge.with.order is deprecated. Use dplyr function left_join()")
 }
 
-#' COnvert factor with numeric labels to numeric
+#' Convert factor with numeric labels to numeric
 #'
 #' @param x A factor vector.
 #' @return A numeric vector.
@@ -165,22 +176,35 @@ as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
 #' @examples
 #' # Make me!
 SBChisquare <- function(Chisq1, df1, scf1, Chisq2, df2, scf2) {
-  if (df1 > df2) {
-    TRd = (Chisq1 * scf1 - Chisq2 * scf2) /
-      ((df1 * scf1 - df2 * scf2) / (df1 - df2))
-  }
-  if (df2 > df1) {
-    TRd <-
-      (Chisq2 * scf2 - Chisq1 * scf1) / ((df2 * scf2 - df1 * scf1) / (df2 - df1))
-  }
   if (df1 == df2) {
-    stop("Models cannot be nested, DF are equal")
+    warning("Models cannot be nested, DF are equal")
+    return(c(
+      Chisq = NaN,
+      df = NaN,
+      p = NaN))
   }
-  df <- abs(df1 - df2)
+
+  more_complex <- FALSE
+  fit_worse <- FALSE
+
+  if (df2 > df1){ # If DF increased, model became more complex
+    more_complex <- TRUE
+  }
+  delta_df <- abs(df2-df1)
+
+  if (Chisq2-Chisq1 > 0){ # Fit became worse
+    fit_worse <- TRUE
+  }
+
+  TRd = abs(Chisq1 * scf1 - Chisq2 * scf2) /
+      ((df1 * scf1 - df2 * scf2) / (df1 - df2))
+
   return(c(
-    Chisq = round(TRd, 2),
-    df = round(df),
-    p = round(pchisq(TRd, df, lower.tail = FALSE), 3)
+    Chisq = round(ifelse((more_complex&fit_worse)|(!more_complex&!fit_worse), 1, -1)*TRd, 2),
+    df = ifelse((more_complex&fit_worse)|(!more_complex&!fit_worse), 1, -1)*delta_df,
+    p = ifelse((more_complex&fit_worse)|(!more_complex&!fit_worse),
+               round(1-pchisq(TRd, delta_df, lower.tail = FALSE), 3),
+               round(pchisq(TRd, delta_df, lower.tail = FALSE), 3))
   ))
 }
 
@@ -208,6 +232,225 @@ SB_chisq_Pvalues<-function(tableChi_df_scf){
   })
   return(as.data.frame(t(chisquares)))
 }
+
+#' Print Mplus results table formatted for publication
+#'
+#' Takes an mplusModel object returned by \code{readModels}, and formats it as
+#' a publication-ready table.
+#' @param mplusModel An mplusModel object, as returned by \code{readModels}.
+#' @param parameters A character string corresponding to the name of an element
+#' of the $parameters list in \code{mplusModel}. Usually one of
+#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
+#' @param keepCols A character vector of columns to retain from the results
+#' section. Standard column names are
+#' \code{c("paramHeader", "param", "est", "se", "est_se", "pval")}. Special
+#' column names added by \code{printResultsTable} are:
+#' \code{c("est_sig", "confint", "label")}. These correspond to 1) the "est"
+#' column with significance asterisks appended; 2) a formatted confidence
+#' interval; 3) a label, obtained by concatenating the "paramHeader" and "param"
+#' columns.
+#' @param digits Number of digits to round to when formatting columns.
+#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
+#' @param ... Logical expressions used to filter the rows of results returned.
+#' @return A data.frame of formatted Mplus results.
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @seealso \code{\link{readModels}}.
+#' @export
+#' @examples
+#' #Make me!
+
+printResultsTable <- function(mplusModel, parameters = "unstandardized", keepCols = c("label", "est_sig", "confint"), digits = 2, ...){
+  args <- list(...)
+  results <- mplusModel$parameters[[parameters]]
+  value_columns <- c("est", "se", "est_se", "pval", "posterior_sd")
+  value_columns <- value_columns[which(value_columns %in% names(results))]
+  add_cis <- FALSE
+  if(!is.null(mplusModel$parameters[[paste0("ci.", parameters)]])){
+    if(dim(results)[1]==dim(mplusModel$parameters[[paste0("ci.", parameters)]])[1]){
+      add_cis <- TRUE
+      results <- cbind(results, mplusModel$parameters[[paste0("ci.", parameters)]][, c("low2.5", "up2.5")])
+    }
+  }
+
+  if(!is.null(mplusModel$indirect[[parameters]])){
+    overall <- mplusModel$indirect[[parameters]]$overall
+    paramHeader <- "Sum.of.indirect"
+    param <- paste(overall$outcome, overall$pred, sep = ".")
+    overall$pred <- paramHeader
+    overall$outcome <- param
+    names(overall)[c(1, 2)] <- c("paramHeader", "param")
+    if(add_cis){
+      overall <- cbind(overall, mplusModel$indirect[[paste0("ci.", parameters)]]$overall[, c("low2.5", "up2.5")])
+    }
+
+    results <- rbind(results, overall[, -3])
+    specific <- mplusModel$indirect[[parameters]]$specific
+    paramHeader <- "Specific.indirect"
+    param <- paste(specific$pred, specific$intervening, specific$outcome, sep = ".")
+    specific$pred <- paramHeader
+    specific$intervening <- param
+    names(specific)[c(1, 2)] <- c("paramHeader", "param")
+    if(add_cis){
+      specific <- cbind(specific, mplusModel$indirect[[paste0("ci.", parameters)]]$specific[, c("low2.5", "up2.5")])
+    }
+    results <- rbind(results, specific[, -3])
+  }
+
+  var_classes <- sapply(results[value_columns], class)
+  results[value_columns[which(var_classes == "character")]] <- lapply(results[value_columns[which(var_classes == "character")]], as.numeric)
+  results[value_columns[which(var_classes == "factor")]] <- lapply(results[value_columns[which(var_classes == "factor")]], as.numeric.factor)
+
+  constrained_rows <- results$pval == 999
+
+  results$label <- param_label(results)
+  if(all(c("est", "pval") %in% names(results))){
+    results$est_sig <- est_sig(results, digits)
+  }
+  results$confint <- conf_int(results, digits)
+  filter_columns <- names(args)[which(names(args) %in% names(results))]
+  if(!is.null(filter_columns)){
+    atomic_filters <- which(sapply(args[filter_columns], length) == 1)
+    args[filter_columns][atomic_filters] <- toString(shQuote(args[filter_columns][atomic_filters]))
+    num_cols <- which(sapply(results[filter_columns], is.numeric))
+    num_filter <- NULL
+    if(length(num_cols > 0)){
+      num_filter <- sapply(filter_columns[num_cols], function(x){
+        paste(paste0("results[['", x, "']] >= ", args[[x]][1], " & ", "results[['", x, "']] <= ", args[[x]][2]), collapse = " & ")
+      })
+
+      row_filter <- paste(c(num_filter,
+                            sapply(filter_columns[-num_cols], function(x){
+                              paste0("results[['", x, "']] %in% ", args[x])
+                            })),
+                          collapse = " & ")
+    } else {
+      row_filter <- paste(sapply(filter_columns, function(x){
+        paste0("results[['", x, "']] %in% ", args[x])
+      }), collapse = " & ")
+
+    }
+    results <- results[eval(parse(text = row_filter)), ]
+  }
+  constrained_rows <- results$pval == 999
+
+  results[, value_columns] <- lapply(results[, value_columns], formatC, digits = digits, format = "f")
+  results[constrained_rows, which(names(results) %in% c("se", "pval", "est_se", "confint"))] <- ""
+  if(!is.null(keepCols)) results <- results[ , keepCols]
+  results
+}
+
+#' Add significance asterisks to Mplus output
+#'
+#' Takes an mplusModel object returned by \code{readModels}, and adds
+#' significance asterisks to the "est" column, based on the "pval" column.
+#' @param mplusresults An mplusModel object, as returned by \code{readModels}.
+#' @param parameters A character string corresponding to the name of an element
+#' of the $parameters list in \code{mplusModel}. Usually one of
+#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
+#' @param keepCols A character vector of columns to retain from the results
+#' section. Standard column names are
+#' \code{c("paramHeader", "param", "est", "se", "est_se", "pval")}. Special
+#' column names added by \code{printResultsTable} are:
+#' \code{c("est_sig", "confint", "label")}. These correspond to 1) the "est"
+#' column with significance asterisks appended; 2) a formatted confidence
+#' interval; 3) a label, obtained by concatenating the "paramHeader" and "param"
+#' columns.
+#' @param digits Number of digits to round to when formatting columns.
+#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
+#' @param ... Logical expressions used to filter the rows of results returned.
+#' @return A data.frame of formatted Mplus results.
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @seealso \code{\link{readModels}}.
+#' @export
+#' @examples
+#' #Make me!
+est_sig <- function(mplusresults, digits){
+  paste0(formatC(mplusresults$est, digits = digits, format = "f"), ifelse(mplusresults$pval<.05, "*", ""), ifelse(mplusresults$pval<.01, "*", ""), ifelse(mplusresults$pval<.001, "*", ""))
+}
+
+# Make confidence intervals from mplus results
+conf_int <- function(mplusresults, digits){
+  if("low2.5" %in% names(mplusresults) | "lower_2.5ci" %in% names(mplusresults)){
+    if("low2.5" %in% names(mplusresults)){
+      message("Used bootstrapped confidence intervals.")
+      confint <- paste0("[", formatC(mplusresults$low2.5, digits = digits, format = "f"), ", ", formatC(mplusresults$up2.5, digits = digits, format = "f"), "]")
+    } else {
+      confint <- paste0("[", formatC(mplusresults$lower_2.5ci, digits = digits, format = "f"), ", ", formatC(mplusresults$upper_2.5ci, digits = digits, format = "f"), "]")
+    }
+  } else {
+    message("Calculated confidence intervals from est and se.")
+    confint <- paste0("[", formatC(mplusresults$est-(1.96*mplusresults$se), digits = digits, format = "f"), ", ", formatC(mplusresults$est+(1.96*mplusresults$se), digits = digits, format = "f"), "]")
+  }
+  gsub("^ \\[", "\\[ ", gsub("([^-]\\d\\.\\d{2})", " \\1", confint))
+}
+
+
+param_label <- function(mplusresults){
+  if(!is.null(mplusresults[["paramHeader"]])&!is.null(mplusresults[["param"]])){
+    return(paste(mplusresults$paramHeader, mplusresults$param, sep = "."))
+  }
+  if(!is.null(mplusresults[["pred"]])&!is.null(mplusresults[["intervening"]])&!is.null(mplusresults[["outcome"]])){
+    return(paste("IND", mplusresults$pred, mplusresults$intervening, mplusresults$outcome, sep = "."))
+  }
+  if(!is.null(mplusresults[["pred"]])&!is.null(mplusresults[["summary"]])&!is.null(mplusresults[["outcome"]])){
+    return(paste(gsub("\\s", "\\.", mplusresults$summary), mplusresults$outcome, mplusresults$pred, sep = "."))
+  }
+}
+
+rbind_tables <- function(table_list){
+  do.call(rbind,
+    lapply(names(table_list), function(x){
+      rbind(c(x, rep("", ncol(table_list[[1]]))), table_list[[x]])
+    })
+  )
+}
+
+# Extract correlation table from mplusModel
+corTable <- function(mplusModel, parameters = "stdyx.standardized", valueColumn = "est_sig", digits = 2){
+  correlations <- mplusModel$parameters[[parameters]]
+  if("BetweenWithin" %in% names(correlations)){
+    cornames <- unique(correlations$BetweenWithin)
+    correlations <- lapply(cornames, function(x){
+      correlations[correlations$BetweenWithin == x, ]
+    })
+    names(correlations) <- cornames
+  } else {
+    correlations <- list(correlations)
+  }
+  correlations <- lapply(correlations, function(cors){
+    cors <- cors[grep("WITH$", cors$paramHeader), ]
+    cors$paramHeader <- gsub("\\.WITH", "", cors$paramHeader)
+    cors$paramHeader <- substr(cors$paramHeader,  1, 8)
+    cors$param <- substr(cors$param,  1, 8)
+    if(valueColumn == "est_sig"){
+      cors$est_sig <- est_sig(cors, digits = digits)
+    }
+    if(valueColumn == "confint"){
+      cors$confint <- conf_int(cors, digits = digits)
+    }
+
+    cors <- cors[ , c("paramHeader", "param", valueColumn)]
+    cor_order <- unique(c(rbind(cors$paramHeader, cors$param)))
+    names(cors)[3] <- "value"
+    cors <- rbind(cors, data.frame(paramHeader = cors$param, param = cors$paramHeader, value = cors$value))
+    cors <- rbind(cors, data.frame(paramHeader = unique(cors$paramHeader), param = unique(cors$paramHeader), value = rep(ifelse(valueColumn %in% c("est", "est_sig"), 1, NA), length(unique(cors$paramHeader)))))
+    cors <- reshape(cors, v.names = "value", timevar = "paramHeader", idvar = "param", direction = "wide")
+    names(cors) <- substr(names(cors), 7, 15)
+
+    cors <- cors[match(cor_order, cors[[1]]), na.omit(match(cor_order, names(cors)))]
+    row.names(cors) <- cor_order
+    cors[is.na(cors)] <- ""
+    cors
+  })
+  if(length(correlations) == 1){
+    correlations <- correlations[[1]]
+  }
+  correlations
+}
+
+
 
 
 mplusToTable<-function(location=getwd(), mplusoutput=NULL, results="stdyx.standardized", se=FALSE, ...){
@@ -509,9 +752,16 @@ return(list(screen=toomuchrepetition, repPerPerson=repperperson, repetitionplot=
 }
 
 
-###########################################
-# Calculate partial eta squared for anova #
-###########################################
+#' Calculate partial eta squared for anova
+#'
+#' Takes in an anova model, and returns partial eta squared for the different
+#' predictors.
+#' @param x An anova model (from \code{aov()}).
+#' @author Andy Field
+#' @export
+#' @examples
+#' model1 <- aov(weight ~ group, data = PlantGrowth)
+#' EtaSq(model1)
 EtaSq<-function (x)
 {
     anovaResults <- summary.aov(x)[[1]]
@@ -530,9 +780,18 @@ EtaSq<-function (x)
     return(res)
 }
 
-#
-#Return pseudo R2s for logistic models
-#
+#' Return pseudo R2s for a logistic model
+#'
+#' Takes in a logistic regression model, and returns Hosmer & Lemeshow, Cox &
+#' Snell, and Nagelkerke's pseudo-R2 estimates
+#' @param logModel A logistic regression model (from \code{glm()}).
+#' @author Andy Field
+#' @export
+#' @examples
+#' dat <- mtcars
+#' model1 <- glm(am ~ mpg, data = dat, family =
+#' "binomial")
+#' logisticPseudoR2s(model1)
 logisticPseudoR2s <- function(LogModel) {
   dev <- LogModel$deviance
   nullDev <- LogModel$null.deviance
@@ -540,64 +799,96 @@ logisticPseudoR2s <- function(LogModel) {
   R.l <-  1 -  dev / nullDev
   R.cs <- 1- exp ( -(nullDev - dev) / modelN)
   R.n <- R.cs / ( 1 - ( exp (-(nullDev / modelN))))
-  list(c("R2 (Hosmer & Lemeshow)", round(R.l, 3)),
-       c("R2 (Cox & Snell)", round(R.cs, 3)),
-       c("R2 (Nagelkerke)", round(R.n, 3)))
+  out <- c(round(R.l, 3), round(R.cs, 3), round(R.n, 3))
+  names(out) <- c("R2 (Hosmer & Lemeshow)", "R2 (Cox & Snell)", "R2 (Nagelkerke)")
+  out
 }
 
 
 
-#
-#Round all numeric variables in data frame X
-#
-round_numeric <- function(x, digits) {
+#' Format numeric columns
+#'
+#' Formats the numeric columns of a data.frame, to round to a specific number
+#' of digits.
+#' @param x A data.frame.
+#' @param digits The desired number of digits.
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' dat <- mtcars
+#' format_numeric(dat, 1)
+format_numeric <- function(x, digits) {
   numeric_columns <- sapply(x, class) == 'numeric'
-  x[numeric_columns] <-  round(x[numeric_columns], digits)
+  x[numeric_columns] <-  lapply(x[numeric_columns], formatC, digits, format = "f")
   x
 }
 
-#
-#Make table for comparing logistic regression models
-#
-compareLogisticModels<-function(model){
+#' Compare logistic regression models
+#'
+#' Returns a model fit table with significance tests for a list of logistic
+#' regression models.
+#' @param models A (named) list of logistic regression models
+#' (output from \code{lm}))
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' dat <- mtcars
+#' model1 <- glm(am ~ mpg, data = dat, family =
+#' "binomial")
+#' model2 <- glm(am ~ mpg + wt, data = dat, family =
+#' "binomial")
+#' compareLogisticModels(models = list("Only mpg" = model1,
+#'                                     "Mpg and wt" = model2))
+compareLogisticModels<-function(models){
 
-pseudor2s<-data.frame(matrix(unlist(lapply(model, logisticPseudoR2s)), nrow=length(model), byrow=T))[,c(2,4,6)]
-colnames(pseudor2s)<-c("Hosmer & Lemeshow", "Cox & Snell", "Nagelkerke")
-rownames(pseudor2s)<-names(model)
+  pseudor2s <- data.frame(t(sapply(models, logisticPseudoR2s)))
+  names(pseudor2s)<-c("Hosmer.Lemeshow", "Cox.Snell", "Nagelkerke")
+  rownames(pseudor2s)<-names(models)
 
-modelsums<-lapply(model, summary)
+  modelsums<-lapply(models, summary)
 
-chis<-paste0(round(unlist(lapply(model, function(x) x$null.deviance - x$deviance)), 2), paste0(" ("), paste0(unlist(lapply(model, function(x) x$df.null - x$df.residual)), ")"))
+  chis<-paste0(round(unlist(lapply(models, function(x) x$null.deviance - x$deviance)), 2), paste0(" ("), paste0(unlist(lapply(models, function(x) x$df.null - x$df.residual)), ")"))
 
-chisq.prob <-unlist(lapply(model, function(x) 1 - pchisq((x$null.deviance - x$deviance), (x$df.null - x$df.residual))))
+  chisq.prob <-unlist(lapply(models, function(x) 1 - pchisq((x$null.deviance - x$deviance), (x$df.null - x$df.residual))))
 
+  test<-models
+  trythis<-NULL
 
-test<-model
-trythis<-NULL
-
-for(i in 1:length(model)){
-  out<-""
-  for(r in c(1:length(model))[-i]){
-    if(anova(test[[i]], test[[r]], test ="Chisq")$`Pr(>Chi)`[2]<.05){out<-paste0(out, r)}
+  for(i in 1:length(models)){
+    out<-""
+    for(r in c(1:length(models))[-i]){
+      test_results <- anova(test[[i]], test[[r]], test ="Chisq")
+      if(!is.na(test_results[["Pr(>Chi)"]][2])){
+        if(test_results$`Pr(>Chi)`[2]<.05){out<-paste0(out, r)}
+      }
+    }
+    trythis<-c(trythis, out)
   }
-  trythis<-c(trythis, out)
+
+  modeltable2<-data.frame(unlist(lapply(models, function(x) x$null.deviance - x$deviance)), unlist(lapply(models, function(x) x$df.null - x$df.residual)), unlist(lapply(models, function(x) 1 - pchisq((x$null.deviance - x$deviance), (x$df.null - x$df.residual)))), unlist(lapply(models, function(x) x$aic)), pseudor2s, trythis)
+  names(modeltable2)[c(1:4, 8)]<-c("Chi square", "df", "p", "AIC", "Sig. diff from")
+
+  modeltable2
 }
 
-modeltable2<-data.frame(unlist(lapply(model, function(x) x$null.deviance - x$deviance)), unlist(lapply(model, function(x) x$df.null - x$df.residual)), unlist(lapply(model, function(x) 1 - pchisq((x$null.deviance - x$deviance), (x$df.null - x$df.residual)))), unlist(lapply(model, function(x) x$aic)), pseudor2s, trythis)
-names(modeltable2)[c(1:4, 8)]<-c("Chi square", "df", "p", "AIC", "Sig. diff from")
 
-return(modeltable2)
-}
-
-
-#
-# Factor analysis
-#
+#' Conduct a full EFA analysis
+#'
+#' Conducts a full EFA analysis including assumption checks. Returns the
+#' results as a list, writes to .csv files, and prints to the console.
+#' @param data Data.frame. Datafile to be factor analyzed.
+#' @param name Character. The name of the output (for files to be written etc.)
+#' @param nfactors Integer. Hypothesized number of factors; an EFA with this
+#' number of factors will be included in the results.
+#' @param write_files Logical. Whether to write results to .csv files or not.
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' efa_results <- doEFA(bfi[1:500, 1:25], "bfi", 2)
 doEFA<-function(data, name, nfactors=NULL, write_files = FALSE){
-  require(psych)
-  require(ggplot2)
-  require(dplyr)
-  output<-NULL
+  library(psych)
+  library(ggplot2)
+  output<-list()
   output[["cor"]]<-cor(data, use="pairwise.complete.obs")
   output[["N"]]<-nrow(data)
   output[["determinant"]]<-det(output[["cor"]])
@@ -606,9 +897,9 @@ doEFA<-function(data, name, nfactors=NULL, write_files = FALSE){
   output[["kmo"]]<-round(output[["kmo"]]$MSA,2)
   output[["bartlett"]]<-cortest.bartlett(output[["cor"]], n=output[["N"]])
   output[["bartlett"]]<-paste0(c(" X2(", output[["bartlett"]]$df, ") = ", round(output[["bartlett"]]$chisq,2), ", p = ", round(output[["bartlett"]]$p.value, 2)), collapse = "")
-
+  capture.output(
   output[["parallel"]]<-fa.parallel(output[["cor"]], n.obs=output[["N"]])$nfact # Parallel
-
+  )
   output[["maxfa"]]<-fa(output[["cor"]], nfactors=(length(names(data))-1),  rotate="oblimin", n.obs=output[["N"]], fm="ml")
 
   output[["screeplot"]]<-data.frame(1:round(.9*length(names(data))), output[["maxfa"]]$values[1:round(.9*length(names(data)))])
@@ -617,7 +908,7 @@ doEFA<-function(data, name, nfactors=NULL, write_files = FALSE){
   #screeMR # Screeplot 2 factors
   output[["Kaiser_criterion"]]<-length(output[["maxfa"]]$values[output[["maxfa"]]$values>1])
 
-  output[["parallel_fa"]]<-fa(output[["cor"]], nfactors=output[["parallel"]],  rotate="oblimin", n.obs=output[["N"]], fm="ml")
+  output[["parallel_fa"]] <- fa(output[["cor"]], nfactors=output[["parallel"]],  rotate="oblimin", n.obs=output[["N"]], fm="ml")
 
   output[["kaiser_fa"]]<-fa(output[["cor"]], nfactors=output[["Kaiser_criterion"]],  rotate="oblimin", n.obs=output[["N"]], fm="ml")
   if(!is.null(nfactors)){
@@ -630,17 +921,21 @@ doEFA<-function(data, name, nfactors=NULL, write_files = FALSE){
     write.csv(output[["maxfa"]]$loadings, file=paste0(c(name, (length(names(data))-1), "factors fa.csv"), collapse=" "))
     write.csv(output[["parallel_fa"]]$loadings, file=paste0(c(name, output[["parallel"]], "factors fa.csv"), collapse=" "))
     write.csv(output[["kaiser_fa"]]$loadings, file=paste0(c(name, output[["Kaiser_criterion"]], "factors fa.csv"), collapse=" "))
-    ggwrite_files(filename=paste0(name, " screeplot.pdf"), output[["screeplot"]], width=200, height=290, units="mm")
+    ggsave(filename = paste0(name, " screeplot.pdf"),
+           plot = output[["screeplot"]],
+           width=6,
+           height=4,
+           units="in")
   }
-  cat("Model ", name)
-  cat("N = ", output[["N"]])
-  cat("Determinant = ", output[["determinant"]])
-  cat("KMO = ", output[["kmo"]])
-  cat("KMO range = ", output[["kmo.range"]])
-  cat("Bartlett's test of sphericity = ", output[["bartlett"]])
-  cat("Parallel analysis number of factors = ", output[["parallel"]])
-  cat("Kaiser's kriterion number of factors = ", output[["Kaiser_criterion"]])
-  return(output)
+  cat("\nModel ", name, "\n",
+      "N = ", output[["N"]], "\n",
+  "Determinant = ", output[["determinant"]], "\n",
+  "KMO = ", output[["kmo"]], "\n",
+  "KMO range = ", output[["kmo.range"]], "\n",
+  "Bartlett's test of sphericity = ", output[["bartlett"]], "\n",
+  "Parallel analysis number of factors = ", output[["parallel"]], "\n",
+  "Kaiser's kriterion number of factors = ", output[["Kaiser_criterion"]], "\n")
+  output
 }
 
 #
@@ -669,62 +964,81 @@ plotlist<-lapply(names(scales.list), function(x){
 #
 #Reliability analyses
 #
-doReliability <- function(data, keys.list, name, missing=TRUE, impute="none", omega=FALSE, omega.factors=NULL, write_files = FALSE, digits = 2){
+doReliability <- function (data, keys.list, name, missing = TRUE, impute = "none",
+                           omega = FALSE, omega.factors = NULL, write_files = FALSE,
+                           digits = 2)
+{
   require(psych)
   require(pastecs)
-  scoredatanames<-as.vector(gsub("-", "", unlist(keys.list)))
-  scoredatanames<-unique(scoredatanames)
-
-  data<-subset(data, select=(names(data) %in% scoredatanames))
-
-  keys<-make.keys(length(scoredatanames), keys.list=keys.list,item.labels=scoredatanames)
-
-  scores <- scoreItems(keys,data, missing=missing, impute=impute)
-
-  if(omega){
-    if(!is.null(omega.factors)){
-      sapply(1:length(keys.list), function(x){
-        if(omega.factors[x]=="pa"){
-          return(fa.parallel(data[keys.list[[x]]], fa="fa",
-                             use=ifelse(missing==TRUE, "pairwise.complete.obs", "complete.obs"),
-                             plot=FALSE)$nfact)
-        } else{
+  scoredatanames <- as.vector(gsub("-", "", unlist(keys.list)))
+  scoredatanames <- unique(scoredatanames)
+  data <- subset(data, select = (names(data) %in% scoredatanames))
+  keys <- make.keys(length(scoredatanames), keys.list = keys.list,
+                    item.labels = scoredatanames)
+  scores <- scoreItems(keys, data, missing = missing, impute = impute)
+  if (omega) {
+    if (!is.null(omega.factors)) {
+      sapply(1:length(keys.list), function(x) {
+        if (omega.factors[x] == "pa") {
+          return(fa.parallel(data[keys.list[[x]]], fa = "fa",
+                             use = ifelse(missing == TRUE, "pairwise.complete.obs",
+                                          "complete.obs"), plot = FALSE)$nfact)
+        }
+        else {
           return(x)
         }
       })
-    } else {
-      omega.factors<-rep(3, length(keys.list))
     }
-    omegas<-unlist(sapply(1:length(keys.list), function(x){
-      omega(data[keys.list[[x]]], nfactors=omega.factors[x])$omega.tot
+    else {
+      omega.factors <- rep(3, length(keys.list))
+    }
+    omegas <- unlist(sapply(1:length(keys.list), function(x) {
+      omega(data[keys.list[[x]]], nfactors = omega.factors[x])$omega.tot
     }))
   }
-
-  interpret<-function(reliability=NULL){
-    interpretation<-rep("Unacceptable", length(reliability))
-    interpretation[reliability>=.5]<-"Poor"
-    interpretation[reliability>=.6]<-"Questionable"
-    interpretation[reliability>=.7]<-"Acceptable"
-    interpretation[reliability>=.8]<-"Good"
-    interpretation[reliability>=.9]<-"Excellent"
+  interpret <- function(reliability = NULL) {
+    interpretation <- rep("Unacceptable", length(reliability))
+    interpretation[reliability >= 0.5] <- "Poor"
+    interpretation[reliability >= 0.6] <- "Questionable"
+    interpretation[reliability >= 0.7] <- "Acceptable"
+    interpretation[reliability >= 0.8] <- "Good"
+    interpretation[reliability >= 0.9] <- "Excellent"
     return(interpretation)
   }
+  table_descriptives <- data.frame(Subscale = colnames(scores$scores),
+                                   Items = unlist(lapply(keys.list, length)), as.matrix(describe(scores$scores))[,
+                                                                                                                 c(2, 3, 4, 8, 9)], t(stat.desc(scores$scores, basic = FALSE,
+                                                                                                                                                norm = TRUE)[c(8, 9, 10, 11), ]), Alpha = as.vector(scores$alpha),
+                                   Interpret.a = interpret(as.vector(scores$alpha)))
+  table_descriptives[, sapply(table_descriptives, is.numeric)] <- lapply(table_descriptives[,
+                                                                                            sapply(table_descriptives, is.numeric)], formatC, digits = digits,
+                                                                         format = "f")
+  if (omega) {
+    table_descriptives <- data.frame(table_descriptives,
+                                     Omega = omegas, Interpret.O = interpret(omegas))
+  }
+  if (write_files)
+    write.csv(table_descriptives, paste0(name, " scale table.csv"),
+              row.names = F)
 
-  table_descriptives<-data.frame(Subscale=colnames(scores$scores), Items=unlist(lapply(keys.list, length)) , as.matrix(describe(scores$scores))[,c(2,3,4,8,9)], t(stat.desc(scores$scores, basic = FALSE, norm = TRUE)[c(8,9,10,11),]), Alpha=as.vector(scores$alpha), Interpret.a=interpret(as.vector(scores$alpha)))
-  table_descriptives[, sapply(table_descriptives, is.numeric)] <- lapply(table_descriptives[, sapply(table_descriptives, is.numeric)], formatC, digits = digits, format = "f")
-  if(omega){
-    table_descriptives<-data.frame(table_descriptives, Omega=omegas, Interpret.O=interpret(omegas))
+  cordat <- data.frame(scores$scores)
+  if(missing == FALSE){
+    cordat <- cordat[complete.cases(cordat), ]
   }
 
-  if(write_files) write.csv(table_descriptives, paste0(name, " scale table.csv"), row.names = F)
-
-  cortab<-cor(scores$scores, use=ifelse(missing==TRUE, "pairwise.complete.obs", "complete.obs"))
-  cortab <- formatC(cortab, digits = digits, format = "f")
-  cortab[upper.tri(cortab)]<-""
-
-  if(write_files) write.csv(cortab, paste0(name, " correlation table.csv"))
-  return(list("table_descriptives"=table_descriptives, "Correlations"=cortab, "scores"=scores$scores))
+  combos <- expand.grid(names(cordat), names(cordat))
+  cortab <- matrix(mapply(function(x, y){
+    tmp <- cor.test(cordat[[x]], cordat[[y]])
+    paste0(formatC(tmp$estimate, digits = digits, format = "f"), ifelse(tmp$p.value < .05, "*", ""), ifelse(tmp$p.value < .01, "*", ""), ifelse(tmp$p.value < .001, "*", ""))
+  }, x = combos$Var1, y = combos$Var2), nrow = ncol(cordat))
+  colnames(cortab) <- rownames(cortab) <- names(cordat)
+  cortab[upper.tri(cortab)] <- ""
+  if (write_files)
+    write.csv(cortab, paste0(name, " correlation table.csv"))
+  return(list(table_descriptives = table_descriptives, Correlations = cortab,
+              scores = scores$scores))
 }
+
 
 
 itemDesc<-function(data, scales.list=NULL, write_files = FALSE){
