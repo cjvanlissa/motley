@@ -1,14 +1,3 @@
-#' Herbert demo
-#'
-#' Een demo voor herbert
-#' @param teskt Character string with text
-#' @author Caspar J. van Lissa
-#' @export
-herbert <- function(tekst) {
-  print(tekst)
-}
-
-
 #' Run if file does (not) exist, else load file
 #'
 #' Check if a file exists, and if it doesn't, run an expression, and save the
@@ -66,22 +55,33 @@ batchRename <- function(folder = getwd(), filefilter = NULL, pattern, replacemen
   })
 }
 
-#' Report rounded value
+#' Report formatted number
 #'
 #' Report a number, rounded to a specific number of decimals (defaults to two),
-#' using C-style formats.
-#' @param value Value to be rounded.
-#' @param digits Number of digits to round to.
+#' using C-style formats. Intended for RMarkdown reports.
+#' @param x Numeric. Value to be reported
+#' @param digits Integer. Number of digits to round to.
+#' @param equals Logical. Whether to report an equals (or: smaller than) sign.
 #' @return An atomic character vector.
 #' @author Caspar J. van Lissa
 #' @export
 #' @examples
-#' p <- .0234
-#' report(p)
-report <- function(value, digits = 2){
-  compnum <- as.numeric(paste(c(".", rep("0", digits-1), "1"), collapse = ""))
-  ifelse(p < compnum, paste("<", compnum), paste("=", formatC(p, digits = digits, format = "f")))
+#' report(.0234)
+report <- function(x, digits = 2, equals = TRUE){
+  equal_sign <- "= "
+  if(x%%1==0){
+    outstring <- formatC(x, digits = 0, format = "f")
+  } else {
+    if(abs(x) <  10^-digits){
+      equal_sign <- "< "
+      outstring <- 10^-digits
+    } else {
+      outstring <- formatC(x, digits = digits, format = "f")
+    }
+  }
+  ifelse(equals, paste0(equal_sign, outstring), outstring)
 }
+
 
 #' Pool standard deviations
 #'
@@ -134,10 +134,6 @@ rb_from_rpb<-function(rpb, ne, nc){
   return((rpb*sqrt(ne*nc))/(abs(qnorm(ne/(ne+nc)))*(ne+nc)))
 }
 
-### REMOVE, deprecated by dplyr
-merge.with.order <- function(...){
-  stop("merge.with.order is deprecated. Use dplyr function left_join()")
-}
 
 #' Convert factor with numeric labels to numeric
 #'
@@ -146,16 +142,14 @@ merge.with.order <- function(...){
 #' @author Caspar J. van Lissa
 #' @export
 #' @examples
-#' char_vector <- c("2", "4", "6", "3", "1")
-#' factor_vector <- factor(char_vector)
+#' factor_vector <- factor(c("2", "4", "6", "3", "1"))
 #' numeric_vector <- as.numeric.factor(factor_vector)
+#' factor_vector
 #' numeric_vector
-as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
+as.numeric.factor <- function(x){
+  as.numeric(levels(x))[x]
+}
 
-
-#
-#Mplus functions
-#
 
 #' Satorra-Bentler corrected chi-square test
 #'
@@ -174,7 +168,8 @@ as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
 #' model chi-square values.
 #' @export
 #' @examples
-#' # Make me!
+#' df <- data.frame(chi2 = c(23, 44, 65), df = c(78, 74, 70), scf = c(1.02, 1.12, 1.28))
+#' SBChisquare(24, 78, 1.02, 65, 70, 1.28)
 SBChisquare <- function(Chisq1, df1, scf1, Chisq2, df2, scf2) {
   if (df1 == df2) {
     warning("Models cannot be nested, DF are equal")
@@ -259,7 +254,6 @@ SB_chisq_Pvalues<-function(tableChi_df_scf){
 #' @export
 #' @examples
 #' #Make me!
-
 printResultsTable <- function(mplusModel, parameters = "unstandardized", keepCols = c("label", "est_sig", "confint"), digits = 2, ...){
   args <- list(...)
   results <- mplusModel$parameters[[parameters]]
@@ -345,21 +339,8 @@ printResultsTable <- function(mplusModel, parameters = "unstandardized", keepCol
 #' Takes an mplusModel object returned by \code{readModels}, and adds
 #' significance asterisks to the "est" column, based on the "pval" column.
 #' @param mplusresults An mplusModel object, as returned by \code{readModels}.
-#' @param parameters A character string corresponding to the name of an element
-#' of the $parameters list in \code{mplusModel}. Usually one of
-#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
-#' @param keepCols A character vector of columns to retain from the results
-#' section. Standard column names are
-#' \code{c("paramHeader", "param", "est", "se", "est_se", "pval")}. Special
-#' column names added by \code{printResultsTable} are:
-#' \code{c("est_sig", "confint", "label")}. These correspond to 1) the "est"
-#' column with significance asterisks appended; 2) a formatted confidence
-#' interval; 3) a label, obtained by concatenating the "paramHeader" and "param"
-#' columns.
-#' @param digits Number of digits to round to when formatting columns.
-#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
-#' @param ... Logical expressions used to filter the rows of results returned.
-#' @return A data.frame of formatted Mplus results.
+#' @param digits Integer. The number of digits to round the "est" column to.
+#' @return A character vector of formatted Mplus estimates.
 #' @author Caspar J. van Lissa
 #' @family Mplus functions
 #' @seealso \code{\link{readModels}}.
@@ -370,8 +351,25 @@ est_sig <- function(mplusresults, digits){
   paste0(formatC(mplusresults$est, digits = digits, format = "f"), ifelse(mplusresults$pval<.05, "*", ""), ifelse(mplusresults$pval<.01, "*", ""), ifelse(mplusresults$pval<.001, "*", ""))
 }
 
-# Make confidence intervals from mplus results
-conf_int <- function(mplusresults, digits){
+#' Add confidence intervals to Mplus output
+#'
+#' Takes an mplusModel object returned by \code{readModels}, and constructs
+#' nicely formatted confidence intervals. The method depends on the output;
+#' if the results section already contains confidence/credible intervals, these
+#' are reported. If not, the confidence interval is constructed from the "est"
+#' and "se" columns.
+#' @param mplusresults An mplusModel object, as returned by \code{readModels}.
+#' @param digits Integer. The number of digits to round the confidence interval
+#' to.
+#' @return A character vector of formatted confidence intervals.
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @seealso \code{\link{readModels}}.
+#' @export
+#' @examples
+#' data <- data.frame(est = c(1.325, 2.432), se = c(.05336, .00325))
+#' conf_int(data)
+conf_int <- function(mplusresults, digits = 2){
   if("low2.5" %in% names(mplusresults) | "lower_2.5ci" %in% names(mplusresults)){
     if("low2.5" %in% names(mplusresults)){
       message("Used bootstrapped confidence intervals.")
@@ -386,7 +384,21 @@ conf_int <- function(mplusresults, digits){
   gsub("^ \\[", "\\[ ", gsub("([^-]\\d\\.\\d{2})", " \\1", confint))
 }
 
-
+#' Add parameter labels to Mplus output
+#'
+#' Sometimes a single parameter label is more convenient than the two (or more)
+#' columns returned by \code{readModels}. This function constructs parameter
+#' labels by concatenating the paramHeader and param columns, or other relevant
+#' label columns
+#' @param mplusresults An mplusModel object, as returned by \code{readModels}.
+#' @return A character vector of parameter labels.
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @seealso \code{\link{readModels}}.
+#' @export
+#' @examples
+#' data <- data.frame(paramHeader = c("F.BY", "F.BY"), param = c("A", "B"))
+#' param_label(data)
 param_label <- function(mplusresults){
   if(!is.null(mplusresults[["paramHeader"]])&!is.null(mplusresults[["param"]])){
     return(paste(mplusresults$paramHeader, mplusresults$param, sep = "."))
@@ -399,15 +411,54 @@ param_label <- function(mplusresults){
   }
 }
 
+
+#' Row-binds tables for publication
+#'
+#' Converts tables (data.frames, matrices) to character, and row-binds them,
+#' inserting a label into the first column for each sub-table.
+#' @param table_list A list of tables.
+#' @return A table.
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @export
+#' @examples
+#' table_list <- list(
+#'   table_f = data.frame(paramHeader = c("F.BY", "F.BY"), param = c("A", "B")),
+#'   table_g = data.frame(paramHeader = c("G.BY", "G.BY"), param = c("A", "B")))
+#' table_list <- list(
+#'   data.frame(paramHeader = c("F.BY", "F.BY"), param = c("A", "B")),
+#'   data.frame(paramHeader = c("G.BY", "G.BY"), param = c("A", "B")))
+#' rbind_tables(table_list)
 rbind_tables <- function(table_list){
+  if(length(unique(sapply(table_list, ncol))) > 1) stop("Not all tables have the same number of columns.")
+  if(is.null(names(table_list))) names(table_list) <- 1:length(table_list)
   do.call(rbind,
     lapply(names(table_list), function(x){
-      rbind(c(x, rep("", ncol(table_list[[1]]))), table_list[[x]])
+      rbind(
+        c(x, rep("", (ncol(table_list[[x]])-1))), sapply(table_list[[x]], as.character))
     })
   )
 }
 
-# Extract correlation table from mplusModel
+#' Extract correlation tables from mplusModel
+#'
+#' Takes an mplusModel object returned by \code{readModels}, and extracts a
+#' publication-ready correlation matrix.
+#' @param mplusModel An mplusModel object, as returned by \code{readModels}.
+#' @param parameters A character string corresponding to the name of an element
+#' of the $parameters list in \code{mplusModel}. Usually one of
+#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
+#' @param valueColumn Character. Which column to use to propagate the matrix.
+#' Defaults to "est_sig", the estimate with significance asterisks.
+#' @param digits Number of digits to round to when formatting values.
+#' @return A Matrix or a list of matrices (in case there are between/within
+#' correlation matrices).
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @seealso \code{\link{readModels}}.
+#' @export
+#' @examples
+#' #Make me!
 corTable <- function(mplusModel, parameters = "stdyx.standardized", valueColumn = "est_sig", digits = 2){
   correlations <- mplusModel$parameters[[parameters]]
   if("BetweenWithin" %in% names(correlations)){
@@ -452,8 +503,26 @@ corTable <- function(mplusModel, parameters = "stdyx.standardized", valueColumn 
 
 
 
-
-mplusToTable<-function(location=getwd(), mplusoutput=NULL, results="stdyx.standardized", se=FALSE, ...){
+#' Tabulate Mplus output (old, redundant version)
+#'
+#' This function was used for my paper on parenting and adolescents' emotion
+#' regulation. It is largely deprecated by printResultsTable, but contains some
+#' interesting code for labeling Z-tests for new parameters, and tabulating
+#' multi-group output. Should be re-examined and merged with printResultsTable.
+#' @param location Character. Location to read the Mplus output files from.
+#' @param mplusoutput modelList. A list of mplusModel outputs.
+#' @param results Character. Which section of the results to retain; one of
+#' \code{c("unstandardized", "stdyx.standardized", "stdy.standardized")}.
+#' @param se Logical. Report se or not.
+#' @return A list of Mplus results.
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @seealso \code{\link{readModels}}.
+#' @export
+#' @import MplusAutomation
+#' @examples
+#' #Make me!
+mplusToTable<-function(location=getwd(), mplusoutput=NULL, results="stdyx.standardized", se=FALSE){
   require(stringr)
   require(reshape2)
   #Check if required package MplusAutomation is installed, and install it if it is missing
@@ -598,12 +667,29 @@ mplusToTable<-function(location=getwd(), mplusoutput=NULL, results="stdyx.standa
     }
 
   }
-return(list(modelparameters=mplusoutput, results=merged, ztests=ztests))
+  list(modelparameters=mplusoutput, results=merged, ztests=ztests)
 }
 
 
 
-#### Automatically adjust mplus syntax
+#' Constrain Mplus syntax (old, redundant version)
+#'
+#' This function was used for my paper on parenting and adolescents' emotion
+#' regulation. It is intended to constrain non-significantly different
+#' parameters across groups. Interesting idea, which could be implemented more
+#' systematically using mplusModeler().
+#' @param mplusoutput modelList. A list of mplusModel outputs.
+#' @param ztests A table of z-tests, returned by mplusToTable.
+#' @param location Character. The location of relevant input files.
+#' @param outputlocation Character. The location where to write the constrained
+#' input files.
+#' @return Nothing. Function is run for its side effect of writing files.
+#' @author Caspar J. van Lissa
+#' @family Mplus functions
+#' @seealso \code{\link{readModels}}.
+#' @export
+#' @examples
+#' #Make me!
 MplusConstrainModels<-function(mplusoutput=NULL, ztests=NULL, location=getwd(), outputlocation=getwd()){
 
   significant_ztests<- ztests[grep("\\*", ztests$est_sig),]
@@ -648,10 +734,25 @@ MplusConstrainModels<-function(mplusoutput=NULL, ztests=NULL, location=getwd(), 
   }
 }
 
-###
-
-
-summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+#' summarySE
+#'
+#' Takes in a data.frame, and returns summary statistics for the specified
+#' \code{measurevar} by \code{groupvars}.
+#' @param data A data.frame.
+#' @param measurevar Character. The name of the variable to summarize.
+#' @param groupvars Character vector. Name of the grouping variables to
+#'  summarize by.
+#' @param na.rm Logical. Remove NA values before summarizing?
+#' @param conf.interval Numeric. What percentile to use for confidence interval?
+#' @param .drop Logical. Drop unused levels of the grouping variables.
+#' @return A data.frame.
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' dat <- iris
+#' dat$Long <- cut(dat$Petal.Length, 2)
+#' summarySE(dat, "Sepal.Length", c("Species", "Long"))
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=TRUE,
                       conf.interval=.95, .drop=TRUE) {
     library(plyr)
 
@@ -687,21 +788,45 @@ summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
     return(datac)
 }
 
-#
-#POMS coding
-#
+#' Apply POMS-coding to data
+#'
+#' Takes in a data.frame, and applies POMS (proportion of of maximum)-coding to the
+#' numeric columns.
+#' @param data A data.frame.
+#' @return A data.frame.
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' data <- data.frame(a = c(1, 2, 2, 4, 1, 6),
+#'                    b = c(6, 6, 3, 5, 3, 4),
+#'                    c = c("a", "b", "b", "t", "f", "g"))
+#' poms(data)
 poms<-function(data){
-nums <- sapply(data, is.numeric)
-minscores<-as.numeric(apply(data[,nums], 2, function(x) min(x, na.rm=TRUE)))
-data[,nums]<-sweep(data[,nums], 2, minscores, `-`)
-maxscores<-as.numeric(apply(data[,nums], 2, function(x) max(x, na.rm=TRUE)))
-data[,nums]<-sweep(data[,nums], 2, maxscores, `/`)
-return(data)
+  nums <- sapply(data, is.numeric)
+  minscores<-as.numeric(apply(data[,nums], 2, function(x) min(x, na.rm=TRUE)))
+  data[,nums]<-sweep(data[,nums], 2, minscores, `-`)
+  maxscores<-as.numeric(apply(data[,nums], 2, function(x) max(x, na.rm=TRUE)))
+  data[,nums]<-sweep(data[,nums], 2, maxscores, `/`)
+  data
 }
 
-#
-#Screen data for nonsense answers
-#
+#' Screen data for nonsense answers
+#'
+#' Experimental function, intended to flag nonsense responders in survey data.
+#' @param data The dataset.
+#' @param exclude Regex marker for questionnaires to exclude.
+#' @param maxpercentidentical Maximum percentage of identical answers within
+#' a questionnaire.
+#' @param maxquestionnaires Maximum number of questionnaires which can exceed
+#' maxpercentidentical.
+#' @param questionnaire_regex Regex string that codes for a questionnaire.
+#' @param questionnairelength Integer. How many questions should there be before
+#' something is considered a questionnaire.
+#' @return A whole list of diagnostic stuff.
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' # Makeme!
 screenResponses<-function(data, exclude=NULL, maxpercentidentical=1, maxquestionnaires=2, questionnaire_regex="\\w+\\d+", questionnairelength=3){
 #Test harness:
  # exclude="marital"
@@ -757,13 +882,12 @@ return(list(screen=toomuchrepetition, repPerPerson=repperperson, repetitionplot=
 #' Takes in an anova model, and returns partial eta squared for the different
 #' predictors.
 #' @param x An anova model (from \code{aov()}).
-#' @author Andy Field
+#' @author Caspar J. van Lissa
 #' @export
 #' @examples
 #' model1 <- aov(weight ~ group, data = PlantGrowth)
 #' EtaSq(model1)
-EtaSq<-function (x)
-{
+EtaSq<-function (x){
     anovaResults <- summary.aov(x)[[1]]
     anovaResultsNames <- rownames(anovaResults)
     SS <- anovaResults[,2] #SS effects and residuals
@@ -1063,48 +1187,6 @@ itemDesc<-function(data, scales.list=NULL, write_files = FALSE){
   return(tables=tables)
 }
 
-#
-#Incremental predictive validity
-#
-predictiveValidity<-function(data, predictors1, predictors2, dvs, namePred1, namePred2){
-  require(dplyr)
-  predictor1models<-lapply(dvs, function(x){
-    dt<-dplyr::select(data, one_of(predictors1))
-    lm(data[,x]~., data=dt)})
-
-  names(predictor1models)<-dvs
-
-  predictor2models<-lapply(dvs, function(x){
-    dt<-dplyr::select(data, one_of(predictors2))
-    lm(data[,x]~., data=dt)})
-
-  names(predictor2models)<-dvs
-
-  combinedmodels<-lapply(dvs, function(x){
-    dt<-dplyr::select(data, one_of(predictors1), one_of(predictors2))
-    lm(data[,x]~., data=dt)})
-
-  names(combinedmodels)<-dvs
-
-  deltas1vcombined<-lapply(dvs, function(x){anova(predictor1models[[x]], combinedmodels[[x]])})
-  names(deltas1vcombined)<-dvs
-  deltas2vcombined<-lapply(dvs, function(x){anova(predictor2models[[x]], combinedmodels[[x]])})
-  names(deltas2vcombined)<-dvs
-
-  rsquaredtable<-data.frame(unlist(lapply(predictor1models, function(x){summary(x)$r.squared})), unlist(lapply(deltas1vcombined, function(x){x[2,6]})), unlist(lapply(predictor2models, function(x){summary(x)$r.squared})), unlist(lapply(deltas2vcombined, function(x){x[2,6]})), unlist(lapply(combinedmodels, function(x){summary(x)$r.squared})))
-  names(rsquaredtable)<-c(paste0("R2 ",namePred1), paste0("p-value adding ", namePred2),  paste0("R2 ", namePred2), paste0("p-value adding ", namePred1), "R2 combined")
-
-  rsquaredtable$AddPredictors2<-apply(rsquaredtable, 1, function(x){x[5]-x[1]})
-  rsquaredtable$AddPredictors1<-apply(rsquaredtable, 1, function(x){x[5]-x[3]})
-
-  rsquaredtable<-round(rsquaredtable[,c(1,6,2,3,7,4)], 2)
-  names(rsquaredtable)[c(2,5)]<-c(paste0("Add ", namePred2), paste0("Add ", namePred1))
-
-  write.csv(rsquaredtable, file=paste0(c(namePred1, "vs", namePred2, "Incremental predictive validity.csv"), collapse = " "))
-  print(paste0(c(namePred1, "vs", namePred2, "Incremental predictive validity:"), collapse = " "))
-  print(rsquaredtable)
-  return(rsquaredtable)
-}
 
 #
 #Get avarage factor loadings over time for a longitudinal dataset
