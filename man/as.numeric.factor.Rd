@@ -16,9 +16,9 @@ A numeric vector.
 Convert factor with numeric labels to numeric
 }
 \examples{
-char_vector <- c("2", "4", "6", "3", "1")
-factor_vector <- factor(char_vector)
+factor_vector <- factor(c("2", "4", "6", "3", "1"))
 numeric_vector <- as.numeric.factor(factor_vector)
+factor_vector
 numeric_vector
 }
 \author{

@@ -1,3 +1,58 @@
+#' Find text in files
+#'
+#' Finds literal text in files. Useful if, for example, you want to replace a
+#' function name in all files of an R-package, or if you want to see whether a
+#' function can be deprecated because it is not used.
+#' @param text Character vector. Literal text to search
+#' @param max_size Numeric. Maximum file size to read.
+#' @param dir Character. Which directory to search.
+#' @param ... Additional arguments, passed on to \code{list.files}.
+#' @return Nothing. Prints directly to the console.
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' # Make me!
+find_in_files <- function(text, max_size = 100000, dir = getwd(), ...){
+  text <- escape_special(text)
+  all_files <- list.files(dir, full.names = TRUE, ...)
+  file_info <- file.info(all_files)
+  all_files <- all_files[file_info$size < max_size & file_info$size > 0]
+  file_contents <- lapply(all_files, readLines)
+  text_occurs_here <- lapply(file_contents, function(x){
+    which(sapply(1:length(x), function(i){ grepl(pattern = text, x = x[i])}))
+  })
+  found_it <- which(sapply(text_occurs_here, length) != 0)
+
+  out_list <- lapply(found_it, function(x){
+    cat("In file ", all_files[x], ":\n\n")
+    cat(paste(file_contents[[x]][text_occurs_here[[x]]], collapse = "\n"), "\n\n")
+  })
+
+}
+
+
+#' Escape special characters
+#'
+#' Takes in a string, and escapes any special characters so you can search for
+#' the literal string using regex.
+#' @param strings Character vector.
+#' @return Character vector.
+#' @export
+#' @examples
+#' escape_special("What the $^&(){}.*|?")
+escape_special <- function(strings){
+  vals <- c("\\\\", "\\[", "\\]", "\\(", "\\)",
+            "\\{", "\\}", "\\^", "\\$","\\*",
+            "\\+", "\\?", "\\.", "\\|")
+  replace.vals <- paste0("\\\\", vals)
+  for(i in seq_along(vals)){
+    strings <- gsub(vals[i], replace.vals[i], strings)
+  }
+  strings
+}
+
+
+
 #' Run if file does (not) exist, else load file
 #'
 #' Check if a file exists, and if it doesn't, run an expression, and save the
@@ -790,8 +845,8 @@ summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=TRUE,
 
 #' Apply POMS-coding to data
 #'
-#' Takes in a data.frame, and applies POMS (proportion of of maximum)-coding to the
-#' numeric columns.
+#' Takes in a data.frame, and applies POMS (proportion of of maximum)-coding to
+#' the numeric columns.
 #' @param data A data.frame.
 #' @return A data.frame.
 #' @author Caspar J. van Lissa
@@ -801,12 +856,12 @@ summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=TRUE,
 #'                    b = c(6, 6, 3, 5, 3, 4),
 #'                    c = c("a", "b", "b", "t", "f", "g"))
 #' poms(data)
-poms<-function(data){
+poms <- function(data){
   nums <- sapply(data, is.numeric)
-  minscores<-as.numeric(apply(data[,nums], 2, function(x) min(x, na.rm=TRUE)))
-  data[,nums]<-sweep(data[,nums], 2, minscores, `-`)
-  maxscores<-as.numeric(apply(data[,nums], 2, function(x) max(x, na.rm=TRUE)))
-  data[,nums]<-sweep(data[,nums], 2, maxscores, `/`)
+  minscores <- sapply(data[, nums], min, na.rm=TRUE)
+  data[, nums] <- sweep(data[, nums], 2, minscores, `-`)
+  maxscores <- sapply(data[, nums], max, na.rm=TRUE)
+  data[, nums] <- sweep(data[, nums], 2, maxscores, `/`)
   data
 }
 
@@ -814,68 +869,81 @@ poms<-function(data){
 #'
 #' Experimental function, intended to flag nonsense responders in survey data.
 #' @param data The dataset.
-#' @param exclude Regex marker for questionnaires to exclude.
-#' @param maxpercentidentical Maximum percentage of identical answers within
-#' a questionnaire.
-#' @param maxquestionnaires Maximum number of questionnaires which can exceed
+#' @param keys.list A (named) list, with one entry for each questionnaire,
+#' containing a character vector with all items belonging to that questionnaire.
+#' @param maxpercentidentical Numeric. Maximum allowed percentage of consecutive
+#' identical answers within a questionnaire.
+#' @param maxquestionnaires Maximum number of questionnaires allowed to exceed
 #' maxpercentidentical.
-#' @param questionnaire_regex Regex string that codes for a questionnaire.
-#' @param questionnairelength Integer. How many questions should there be before
-#' something is considered a questionnaire.
-#' @return A whole list of diagnostic stuff.
+#' @return A list with elements \code{"screen"}: A logical vector of length
+#' equal to the number of rows in \code{data}, identifying whether cases are
+#' valid according to the thresholds specified; \code{"exceeded_by_person"}:
+#' a numeric vector, indicating for how many questionnaires each person exceeded
+#' \code{maxpercentidentical}; \code{"exceeded_by_questionnaire"}:
+#' a numeric vector, indicating for each questionnaire how many persons exceeded
+#' \code{maxpercentidentical}.
 #' @author Caspar J. van Lissa
 #' @export
 #' @examples
 #' # Makeme!
-screenResponses<-function(data, exclude=NULL, maxpercentidentical=1, maxquestionnaires=2, questionnaire_regex="\\w+\\d+", questionnairelength=3){
-#Test harness:
- # exclude="marital"
- # maxpercentidentical = 1
- # maxquestionnaires = 2
- # questionnairelength=2
- # questionnaire_regex="\\w+\\d+"
- # questionnairelength=3
-
-#Unique names of questionnaires
-questionnaires<-names(data)[grep(questionnaire_regex, names(data))]
-questionnaires<-gsub("\\d", "", questionnaires)
-print("Original questionnaires:")
-print(questionnaires<-as.data.frame(table(questionnaires)))
-questionnaires<-questionnaires[questionnaires$Freq>=questionnairelength,]
-
-questionnaires<-questionnaires[!questionnaires$questionnaires %in% exclude,]
-#questionnaires<-as.vector(questionnaires$questionnaires)
-
-#total length of each questionnaire
-#lengthofeach<-unlist(lapply(questionnaires, function(x){length(grep(paste0("^",x), names(data)))}))
-
-#Run length per questionnaire
-runlengthperquestionnaire<-as.data.frame(lapply(as.vector(questionnaires$questionnaires), function(x){
-  dt<-dplyr::select(data, starts_with(x))
-  unlist(lapply(apply(dt, 1, rle), function(x){max(x$length)}))
-}))
-names(runlengthperquestionnaire)<-questionnaires$questionnaires
-
-#Percentage repeated
-repeatedanswers<-sweep(runlengthperquestionnaire, 2, questionnaires$Freq, `/`)
-
-repeatedanswers<-ifelse((repeatedanswers>=maxpercentidentical), 1, 0)
-repperperson<-apply(repeatedanswers, 1, sum)
-print("Questionnaires used:")
-questionnaires$Repeated<-apply(repeatedanswers, 2, sum)
-print(questionnaires)
-
-plotrep<-table(repperperson)
-
-#Flag cases with a certain number of scales with all identical answers
-toomuchrepetition<-as.factor(ifelse((repperperson>maxquestionnaires), "Flagged", "Valid"))
-tabletoomuchrep<-table(toomuchrepetition)
-#names(tabletoomuchrep)<-c("Valid", "Flagged")
-
-print(tabletoomuchrep)
-return(list(screen=toomuchrepetition, repPerPerson=repperperson, repetitionplot=plotrep, number.flagged=tabletoomuchrep))
+screenResponses <- function(data = NULL, keys.list = NULL, maxpercentidentical = 1, maxquestionnaires = 2){
+  runlengthperquestionnaire <- sapply(keys.list, function(x){
+    apply(data[, x], 1, function(x){
+      max(rle(x)$lengths)
+    })
+  })
+  repeatedanswers<-sweep(runlengthperquestionnaire, 2, sapply(keys.list, length), `/`)
+  exceeded_maxp <- repeatedanswers >= maxpercentidentical
+  exceeded_person <- rowSums(exceeded_maxp)
+  exceeded_q <- colSums(exceeded_maxp)
+  list(screen = !(exceeded_person > maxquestionnaires), exceeded_by_person = exceeded_person, exceeded_by_questionnaire = exceeded_q)
 }
 
+#' Make a keys list
+#'
+#' Attempts to generate a keys.list, as used by functions from the \code{psych}
+#' package, and several functions in this \code{motley} package.
+#'
+#' @param questionnaire_filter Character. A regex filter that identifies
+#' variable names that are part of a questionnaire.
+#' @param item_filter Character. A regex filter that identifies the incremental
+#' part of multiple items belonging to the same questionnaire (e.g., if items
+#' are labelled c("a1", "a2", "a3"), then the item_filter would be \code{"\\d$"}
+#' ).
+#' @param skip_questionnaires Character vector. Names of the questionnaires to
+#' skip.
+#' @param questionnaire_length Integer. Minimum number of items required to be
+#' included in the list of questionnaires.
+#' @return A named list with elements corresponding to the questionnaires
+#' identified. Each element is a character vector with the variable names
+#' belonging to that questionnaire.
+#' @author Caspar J. van Lissa
+#' @export
+#' @examples
+#' makeKeysList(var_names = c("bfi_1", "bfi_2", "bfi_3", "bfi_4", "bfi_5",
+#' "mac_q_j_1", "mac_q_j_2", "mac_q_j_3", "mac_q_j_4", "mac_q_j_5", "mac_q_j_6",
+#' "mac_q_j_7", "mac_q_j_8", "mac_q_j_9", "mac_q_j_10", "mac_q_j_11",
+#' "mac_q_j_12", "mac_q_j_13", "mac_q_j_14", "mac_q_j_15", "mac_q_j_16",
+#' "mac_q_j_17", "mac_q_j_18", "mac_q_j_19", "mac_q_j_20", "mac_q_j_21",
+#' "mac_q_r_1", "mac_q_r_2", "mac_q_r_3", "mac_q_r_4", "mac_q_r_5", "mac_q_r_6",
+#' "mac_q_r_7", "mac_q_r_8", "mac_q_r_9", "mac_q_r_10", "mac_q_r_11",
+#' "mac_q_r_12", "mac_q_r_13", "mac_q_r_14", "mac_q_r_15", "mac_q_r_16",
+#' "mac_q_r_17", "mac_q_r_18", "mac_q_r_19", "mac_q_r_20", "mac_q_r_21"),
+#' questionnaire_filter = "^[a-zA-Z_]+")
+makeKeysList <- function(var_names,
+                         questionnaire_filter = "^\\w+\\d+$",
+                         item_filter = "\\d+$",
+                         skip_questionnaires = NULL,
+                         questionnaire_length = 3L){
+  items <- grep(questionnaire_filter, var_names, value = TRUE)
+  questionnaires <- factor(gsub(item_filter, "", items))
+  num_items <- table(questionnaires)
+  retain_q <- names(num_items)[which(num_items >= questionnaire_length)]
+  retain_q <- retain_q[!retain_q %in% skip_questionnaires]
+  outlist <- lapply(retain_q, function(x){items[questionnaires == x]})
+  names(outlist) <- retain_q
+  outlist
+}
 
 #' Calculate partial eta squared for anova
 #'

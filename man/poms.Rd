@@ -13,8 +13,8 @@ poms(data)
 A data.frame.
 }
 \description{
-Takes in a data.frame, and applies POMS (proportion of of maximum)-coding to the
-numeric columns.
+Takes in a data.frame, and applies POMS (proportion of of maximum)-coding to
+the numeric columns.
 }
 \examples{
 data <- data.frame(a = c(1, 2, 2, 4, 1, 6),

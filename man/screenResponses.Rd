@@ -4,28 +4,29 @@
 \alias{screenResponses}
 \title{Screen data for nonsense answers}
 \usage{
-screenResponses(data, exclude = NULL, maxpercentidentical = 1,
-  maxquestionnaires = 2, questionnaire_regex = "\\\\w+\\\\d+",
-  questionnairelength = 3)
+screenResponses(data = NULL, keys.list = NULL,
+  maxpercentidentical = 1, maxquestionnaires = 2)
 }
 \arguments{
 \item{data}{The dataset.}
 
-\item{exclude}{Regex marker for questionnaires to exclude.}
+\item{keys.list}{A (named) list, with one entry for each questionnaire,
+containing a character vector with all items belonging to that questionnaire.}
 
-\item{maxpercentidentical}{Maximum percentage of identical answers within
-a questionnaire.}
+\item{maxpercentidentical}{Numeric. Maximum allowed percentage of consecutive
+identical answers within a questionnaire.}
 
-\item{maxquestionnaires}{Maximum number of questionnaires which can exceed
+\item{maxquestionnaires}{Maximum number of questionnaires allowed to exceed
 maxpercentidentical.}
-
-\item{questionnaire_regex}{Regex string that codes for a questionnaire.}
-
-\item{questionnairelength}{Integer. How many questions should there be before
-something is considered a questionnaire.}
 }
 \value{
-A whole list of diagnostic stuff.
+A list with elements \code{"screen"}: A logical vector of length
+equal to the number of rows in \code{data}, identifying whether cases are
+valid according to the thresholds specified; \code{"exceeded_by_person"}:
+a numeric vector, indicating for how many questionnaires each person exceeded
+\code{maxpercentidentical}; \code{"exceeded_by_questionnaire"}:
+a numeric vector, indicating for each questionnaire how many persons exceeded
+\code{maxpercentidentical}.
 }
 \description{
 Experimental function, intended to flag nonsense responders in survey data.
