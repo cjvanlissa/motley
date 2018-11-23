@@ -1,3 +1,38 @@
+#' @title Update citekeys using fuzzy string matching
+#' @description When a new version of Zotero is released, sometimes, citekeys
+#' are changed, thereby breaking references in an existing Rmarkdown file. This
+#' function:
+#' \enumerate{
+#' \item Takes in a text string, and a file path to the .bib file
+#' \item Extracts citekeys from both the text string and bib file
+#' \item Uses fuzzy matching to replace the citekeys in text with the most
+#' likely matching citekeys from bibfile.
+#' }
+#' @param text Character string. Text from an Rmarkdown file.
+#' @param bibfile Character string. Path to .bib file.
+#' @param ... Arguments passed to \code{\link[base]{agrep}}
+#' @return A character string.
+#' @examples
+#' \dontrun{
+#' update_citekeys(readLines("clipboard"), "references.bib")
+#' }
+#' @rdname update_citekeys
+#' @export
+update_citekeys <- function(text, bibfile, ...){
+  keys <- readLines(bibfile)
+  keys <- keys[grepl("^@\\w+\\{(.+),$", keys)]
+  keys <- sapply(keys, gsub, pattern = "^@\\w+\\{(.+),$", replacement = "\\1", USE.NAMES = FALSE)
+
+  textkeys <- substring(unlist(strsplit(trimws(gsub("(@\\w+)|.", "\\1 ", text)), "\\s+")), first = 2)
+
+  sapply(textkeys, agrep, x = keys, value = TRUE)
+  outstring <- text
+  for(replacekey in textkeys){
+    outstring <- gsub(replacekey, agrep(replacekey, x = keys, value = TRUE, ...), outstring)
+  }
+  outstring
+}
+
 #' Find text in files
 #'
 #' Finds literal text in files. Useful if, for example, you want to replace a
