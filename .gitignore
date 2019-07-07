@@ -3,3 +3,6 @@
 .RData
 .Ruserdata
 *.RData
+R/test_plot_sem.R
+dev/
+*.png

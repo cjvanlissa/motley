@@ -17,7 +17,6 @@ calc_i2 <- function(x) {
   outval
 }
 
-#
 #' @title Create an interactive funnel plot
 #' @description Takes an object of class \code{rma}, and plots an interactive
 #' funnel plot using \code{plotly}.

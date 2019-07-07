@@ -1,2 +1,3 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
+R/test_plot_sem.R

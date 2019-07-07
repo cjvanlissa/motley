@@ -346,6 +346,7 @@ SB_chisq_Pvalues<-function(tableChi_df_scf){
 #' #Make me!
 printResultsTable <- function(mplusModel, parameters = "unstandardized", keepCols = c("label", "est_sig", "confint"), digits = 2, ...){
   args <- list(...)
+
   results <- mplusModel$parameters[[parameters]]
   value_columns <- c("est", "se", "est_se", "pval", "posterior_sd")
   value_columns <- value_columns[which(value_columns %in% names(results))]
@@ -359,26 +360,33 @@ printResultsTable <- function(mplusModel, parameters = "unstandardized", keepCol
 
   if(!is.null(mplusModel$indirect[[parameters]])){
     overall <- mplusModel$indirect[[parameters]]$overall
-    paramHeader <- "Sum.of.indirect"
-    param <- paste(overall$outcome, overall$pred, sep = ".")
-    overall$pred <- paramHeader
-    overall$outcome <- param
-    names(overall)[c(1, 2)] <- c("paramHeader", "param")
-    if(add_cis){
-      overall <- cbind(overall, mplusModel$indirect[[paste0("ci.", parameters)]]$overall[, c("low2.5", "up2.5")])
+    if(!is.null(overall)){
+      paramHeader <- "Sum.of.indirect"
+      param <- paste(overall$outcome, overall$pred, sep = ".")
+      overall$pred <- paramHeader
+      overall$outcome <- param
+      names(overall)[c(1, 2)] <- c("paramHeader", "param")
+      if(add_cis){
+        overall <- cbind(overall, mplusModel$indirect[[paste0("ci.", parameters)]]$overall[, c("low2.5", "up2.5")])
+      }
+
+      results <- rbind(results, overall[, -3])
     }
 
-    results <- rbind(results, overall[, -3])
     specific <- mplusModel$indirect[[parameters]]$specific
-    paramHeader <- "Specific.indirect"
-    param <- paste(specific$pred, specific$intervening, specific$outcome, sep = ".")
-    specific$pred <- paramHeader
-    specific$intervening <- param
-    names(specific)[c(1, 2)] <- c("paramHeader", "param")
-    if(add_cis){
-      specific <- cbind(specific, mplusModel$indirect[[paste0("ci.", parameters)]]$specific[, c("low2.5", "up2.5")])
+    if(!is.null(specific)){
+      paramHeader <- "Specific.indirect"
+      param <- paste(specific$pred, specific$intervening, specific$outcome, sep = ".")
+      specific$pred <- paramHeader
+      specific$intervening <- param
+      names(specific)[c(1, 2)] <- c("paramHeader", "param")
+      if(add_cis){
+        specific <- cbind(specific, mplusModel$indirect[[paste0("ci.", parameters)]]$specific[, c("low2.5", "up2.5")])
+      }
+      specific <- specific[, names(results)]
+      results <- rbind(results, specific)
     }
-    results <- rbind(results, specific[, -3])
+
   }
 
   var_classes <- sapply(results[value_columns], class)
