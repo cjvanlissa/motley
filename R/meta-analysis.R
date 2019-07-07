@@ -90,6 +90,5 @@ funnel_plotlyfi <- function(x, labels = NULL) {
     scale_x_continuous(breaks = seq(-1.25, 2, 0.25)) +
     theme_bw()+
     theme(legend.position="none")
-  ggplotly(fp, tooltip = "text") %>% config(displayModeBar = F) %>%
-    layout(yaxis=list(fixedrange=TRUE), xaxis=list(fixedrange=TRUE))
+    layout(ggplotly(fp, tooltip = "text") %>% config(displayModeBar = F), yaxis=list(fixedrange=TRUE), xaxis=list(fixedrange=TRUE))
 }
