@@ -86,8 +86,6 @@ escape_special <- function(strings){
   strings
 }
 
-
-
 #' Run if file does (not) exist, else load file
 #'
 #' Check if a file exists, and if it doesn't, run an expression, and save the
@@ -112,7 +110,7 @@ escape_special <- function(strings){
 ifnofile <- function(filename, expr) {
   if(!file.exists(filename)){
     old_envir <- ls(envir = parent.frame())
-    invisible(eval(express_if_not_exists, envir = parent.frame()))
+    invisible(eval(expr, envir = parent.frame()))
     new_objects <- ls(envir = parent.frame())[which(!ls(envir = parent.frame()) %in% old_envir)]
     save(list = new_objects, file = filename, envir = parent.frame())
   } else {
